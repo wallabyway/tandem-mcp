@@ -131,9 +131,16 @@ class TandemClient:
         return result[1:] if result else []
 
     async def get_element(self, model_id: str, key: str, column_families: List[str] | None = None) -> Any:
-        families = column_families or [COLUMN_FAMILIES_STANDARD, COLUMN_FAMILIES_REFS, COLUMN_FAMILIES_XREFS]
+        families = column_families or [
+            COLUMN_FAMILIES_STANDARD, COLUMN_FAMILIES_DTPROPERTIES,
+            COLUMN_FAMILIES_REFS, COLUMN_FAMILIES_XREFS,
+        ]
         data = await self.get_elements(model_id, [key], families)
         return data[0] if data else None
+
+    async def get_model_schema(self, model_id: str) -> Any:
+        """Return the schema (attribute definitions) for a model."""
+        return await self._get(f"modeldata/{model_id}/schema")
 
     async def get_levels(self, model_id: str) -> list:
         elements = await self.get_elements(model_id, column_families=[COLUMN_FAMILIES_STANDARD])
@@ -472,3 +479,177 @@ class TandemClient:
                         "model_id": model_id,
                     })
         return results
+
+    # ── Schema & Column Mapping ─────────────────────────────────────────
+
+    async def _build_schema_map(self, model_id: str, family_filter: str | None = None) -> dict[str, dict]:
+        """Build a mapping from qualified column (e.g. 'z:iAs') to attribute metadata."""
+        schema = await self.get_model_schema(model_id)
+        result: dict[str, dict] = {}
+        if not isinstance(schema, list):
+            return result
+        for attr in schema:
+            if not isinstance(attr, dict):
+                continue
+            fam = attr.get("fam", "")
+            col = attr.get("col", "")
+            if family_filter and fam != family_filter:
+                continue
+            qc = f"{fam}:{col}"
+            result[qc] = {
+                "name": attr.get("name", col),
+                "category": attr.get("category", ""),
+                "data_type": attr.get("dataType"),
+                "description": attr.get("description", ""),
+                "id": attr.get("id", ""),
+            }
+        return result
+
+    def _decode_element_props(self, element: dict, schema_map: dict[str, dict]) -> dict[str, Any]:
+        """Translate z: qualified columns to human-readable names using a schema map."""
+        decoded: dict[str, Any] = {}
+        for qc, value in element.items():
+            if not qc.startswith("z:"):
+                continue
+            meta = schema_map.get(qc)
+            if meta:
+                decoded[meta["name"]] = value
+            else:
+                decoded[qc] = value
+        return decoded
+
+    # ── Composite: Asset Intelligence ───────────────────────────────────
+
+    async def get_tagged_assets_with_properties(
+        self, facility_id: str, model_id: str | None = None, include_empty: bool = False
+    ) -> list[dict]:
+        """Return tagged assets with decoded DT/Maximo properties."""
+        model_ids = [model_id] if model_id else await self._get_model_ids(facility_id)
+        results = []
+        for mid in model_ids:
+            schema_map = await self._build_schema_map(mid, "z")
+            assets = await self.get_tagged_assets(mid)
+            for a in assets:
+                dt_props = self._decode_element_props(a, schema_map)
+                if not include_empty and not dt_props:
+                    continue
+                results.append({
+                    "key": a.get(QC_KEY),
+                    "name": a.get(QC_ONAME) or a.get(QC_NAME),
+                    "classification": a.get(QC_CLASSIFICATION),
+                    "model_id": mid,
+                    "properties": dt_props,
+                })
+        return results
+
+    async def get_assets_by_status(self, facility_id: str, status: str) -> list[dict]:
+        """Filter tagged assets by their Maximo/DT status field."""
+        all_assets = await self.get_tagged_assets_with_properties(facility_id, include_empty=False)
+        needle = status.lower()
+        return [
+            a for a in all_assets
+            if any(
+                isinstance(v, str) and needle in v.lower()
+                for k, v in a.get("properties", {}).items()
+                if "status" in k.lower()
+            )
+        ]
+
+    async def get_aging_assets(
+        self, facility_id: str, max_remain_life: float | None = None, include_decommissioned: bool = True
+    ) -> list[dict]:
+        """Find assets where remaining life is below a threshold or design life exceeded."""
+        all_assets = await self.get_tagged_assets_with_properties(facility_id, include_empty=False)
+        results = []
+        for a in all_assets:
+            props = a.get("properties", {})
+            remain_life = None
+            design_life = None
+            status = None
+            for k, v in props.items():
+                kl = k.lower()
+                if "remainlife" in kl or "remain_life" in kl:
+                    try:
+                        remain_life = float(v)
+                    except (ValueError, TypeError):
+                        pass
+                elif "designlife" in kl or "design_life" in kl:
+                    try:
+                        design_life = float(v)
+                    except (ValueError, TypeError):
+                        pass
+                elif "status" in kl:
+                    status = str(v)
+            if not include_decommissioned and status and "decommission" in status.lower():
+                continue
+            if remain_life is not None:
+                if max_remain_life is None or remain_life <= max_remain_life:
+                    a["remain_life"] = remain_life
+                    a["design_life"] = design_life
+                    a["status"] = status
+                    results.append(a)
+        results.sort(key=lambda x: x.get("remain_life", 999))
+        return results
+
+    async def get_assets_by_classification(self, facility_id: str, classification: str) -> list[dict]:
+        """Filter tagged assets by classification code or partial match."""
+        all_assets = await self.get_tagged_assets_with_properties(facility_id, include_empty=True)
+        needle = classification.lower()
+        results = []
+        for a in all_assets:
+            cls = a.get("classification", "") or ""
+            name = a.get("name", "") or ""
+            if needle in cls.lower() or needle in name.lower():
+                results.append(a)
+        return results
+
+    async def get_asset_detail(self, facility_id: str, element_key: str, model_id: str | None = None) -> dict:
+        """Get a single asset with ALL properties decoded to human-readable names."""
+        mid = model_id or get_default_model_id(facility_id)
+        elem = await self.get_element(mid, element_key)
+        if elem is None and model_id is None:
+            for m in await self._get_model_ids(facility_id):
+                if m == mid:
+                    continue
+                elem = await self.get_element(m, element_key)
+                if elem is not None:
+                    mid = m
+                    break
+        if elem is None:
+            return {"error": "Element not found"}
+
+        schema_map = await self._build_schema_map(mid)
+        dt_props = self._decode_element_props(elem, schema_map)
+
+        from .constants import QC_LEVEL, QC_CLASSIFICATION
+        level_key = elem.get(QC_LEVEL)
+        level_name = ""
+        if level_key:
+            lv = await self.get_element(mid, level_key, [COLUMN_FAMILIES_STANDARD])
+            if lv:
+                level_name = lv.get(QC_ONAME) or lv.get(QC_NAME, "")
+
+        room_names = []
+        room_refs = elem.get(QC_ROOMS)
+        if room_refs:
+            for rk in from_short_key_array(room_refs):
+                rm = await self.get_element(mid, rk, [COLUMN_FAMILIES_STANDARD])
+                if rm:
+                    room_names.append(rm.get(QC_ONAME) or rm.get(QC_NAME, ""))
+
+        source_props = {}
+        for qc, value in elem.items():
+            if qc.startswith("r:"):
+                meta = schema_map.get(qc)
+                source_props[meta["name"] if meta else qc] = value
+
+        return {
+            "key": elem.get(QC_KEY),
+            "name": elem.get(QC_ONAME) or elem.get(QC_NAME),
+            "classification": elem.get(QC_CLASSIFICATION),
+            "level": level_name,
+            "rooms": room_names,
+            "model_id": mid,
+            "properties": dt_props,
+            "source": source_props,
+        }

@@ -32,13 +32,14 @@ No REST calls. No query syntax. Just tools your AI assistant already knows how t
 
 ## Overview
 
-Tandem MCP exposes **27 tools** across four categories:
+Tandem MCP exposes **33 tools** across five categories:
 
 | Category | Count | Examples |
 |----------|-------|---------|
 | **Read / Discovery** | 16 | List groups, facilities, levels, rooms, assets, streams, tickets, history |
 | **Spatial Queries** | 5 | Rooms on a level, assets on a floor, elements in a room, find element location |
 | **System Queries** | 3 | Systems by class, system members, systems serving a room |
+| **Asset Intelligence** | 6 | Schema mapping, assets with Maximo props, aging assets, filter by status/classification |
 | **Write** | 3 | Mutate element properties, create elements, create tickets |
 
 The server also exposes `kb.md` — a domain knowledge base — as an MCP resource. The LLM reads it to understand BIM jargon, facility management workflows, and how to translate natural-language questions into the right tool calls.
@@ -85,7 +86,9 @@ claude mcp list
 
 ### Cursor
 
-Create `.cursor/mcp.json` in your project root (or `~/.cursor/mcp.json` for global):
+Create `.cursor/mcp.json` in your project root (or `~/.cursor/mcp.json` for global).
+
+> **Note:** Cursor requires using `python run_server.py` instead of `fastmcp run` due to how it spawns subprocesses.
 
 ```json
 {
@@ -95,7 +98,7 @@ Create `.cursor/mcp.json` in your project root (or `~/.cursor/mcp.json` for glob
       "args": [
         "run",
         "--project", "/path/to/tandem-mcp-au",
-        "fastmcp", "run", "src/tandem_mcp/server.py"
+        "python", "/path/to/tandem-mcp-au/run_server.py"
       ],
       "env": {
         "TANDEM_CLIENT_ID": "your-client-id",
@@ -210,6 +213,16 @@ No manual token management needed. Scopes requested: `data:read data:write`.
 | `list_systems_by_class` | "Show me all HVAC systems" |
 | `list_system_elements` | "What's connected to AHU-1 Supply Air?" |
 | `list_systems_serving_room` | "What systems serve the data center?" |
+
+### Asset Intelligence (Maximo / CMMS)
+| Tool | Description |
+|------|-------------|
+| `get_model_schema` | Map `z:iAs` → `RemainLife` — decode column IDs to names |
+| `list_tagged_assets_with_properties` | All assets with decoded DT/Maximo properties |
+| `list_assets_by_status` | Filter by status: "OPERATING", "DECOMMISSIONED" |
+| `list_aging_assets` | Find equipment nearing end of life (sorted by RemainLife) |
+| `list_assets_by_classification` | Filter by type: "11.ME.AHU", "CRU", etc. |
+| `get_asset_detail` | Full decoded detail for a single asset |
 
 ### Write
 | Tool | Description |

@@ -253,14 +253,20 @@ G  BUILDING SITEWORK
 When the LLM receives a natural-language question about a facility, use this decision tree:
 
 ### Step 1: What are they asking about?
-- **A specific asset/element by name** → search elements, filter by name
-- **Everything on a floor/level** → get levels, find the level key, query elements by level ref
-- **Everything in a room** → get rooms, find room key, query elements by room ref
-- **A system or connected equipment** → get systems, find system, query elements with system family
-- **Sensor/IoT data** → find streams, get stream data or last reading
-- **Work orders/issues** → get tickets, filter by status/priority
-- **Building overview/structure** → get facility, list models, levels, rooms
-- **Schema/classification info** → get facility template
+- **A specific asset with full details** → `get_asset_detail` (returns decoded Maximo fields, location, everything)
+- **A specific element by name** → `find_element_location` or search via `list_elements`
+- **Asset lifecycle / aging / replacement** → `list_aging_assets` (filters by RemainLife)
+- **Assets by status (operating, decommissioned)** → `list_assets_by_status`
+- **Assets by equipment type** → `list_assets_by_classification` (e.g., "AHU", "11.ME.CRU")
+- **All assets with Maximo data** → `list_tagged_assets_with_properties`
+- **Everything on a floor/level** → `list_assets_on_level` or `list_rooms_on_level`
+- **Everything in a room** → `list_elements_in_room`
+- **A system or connected equipment** → `list_systems_by_class`, `list_system_elements`
+- **Sensor/IoT data** → `list_streams` → `get_stream_data` or `get_stream_last_reading`
+- **Work orders/issues** → `list_tickets`, `create_ticket`
+- **Building overview/structure** → `get_facility`, `list_levels`, `list_rooms`
+- **Schema/column mapping** → `get_model_schema` (critical for interpreting `z:` properties)
+- **Classification/template info** → `get_facility_template`
 
 ### Step 2: Do you have the facility URN?
 - If no → `list_groups` → `list_group_facilities` → pick the facility
@@ -281,7 +287,73 @@ When the LLM receives a natural-language question about a facility, use this dec
 
 ---
 
-## 7. Data Freshness & Caveats
+## 7. DT Properties & Maximo Integration (the `z:` family)
+
+### Critical: The `z:` column family
+
+The **DtProperties** family (`z:`) stores user-defined and CMMS-synced properties — this is where Maximo lifecycle data lives. It is **not returned by default** in most queries. You must explicitly request it.
+
+- Use `column_families: ["n", "z"]` (or `["n", "z", "l"]` if you also need refs)
+- The `get_element` and `get_asset_detail` tools include `z:` automatically
+- `list_tagged_assets_with_properties` returns assets with all DT properties decoded
+
+### Opaque column IDs
+
+Properties in the `z:` family have short encoded IDs like `z:iAs`, `z:gQs`, `z:jAs`. These are **model-specific** — the same Maximo field may have a different column ID in each model. To decode them:
+
+1. Call `get_model_schema` to get the column-to-name mapping
+2. Or use `get_asset_detail` which does the translation automatically
+
+### Common Maximo fields you'll encounter
+
+| Maximo Field | Meaning | Data Type | Example |
+|---|---|---|---|
+| RemainLife | Remaining useful life (years) | Double | 8.47 |
+| DesignLife | Expected total lifespan (years) | Double | 20 |
+| YRBuilt | Year installed | String | "2013" |
+| HealthScore | Condition score | Double | 1656 |
+| StatusDescription | Operating status | String | "OPERATING" |
+| Description | Equipment description | String | "Air Handling Unit" |
+| PluscmodelNum | Manufacturer model number | String | "EPQN-270" |
+| AssetId | Maximo asset tag | String | "TERTBTAHU005" |
+| SerialNum | Serial number | String | "THXM377610" |
+| OrgId | Organization | String | "LAWA" |
+| SiteId | Site code | String | "TERTBT" |
+| Priority | Work priority | Integer | 4 |
+| FailureCode | Uniformat failure class | String | "D3052" |
+| SystemNum | System identifier | String | "HVAC" |
+
+### Maximo classification hierarchy (Mechanical Equipment)
+
+Facilities with Maximo integration use classification codes like these for HVAC:
+
+| Code | Equipment Type | Typical DesignLife |
+|------|---------------|-------------------|
+| `11.ME.AHU` | Air Handling Unit | 20 years |
+| `11.ME.CRU` | Computer Room Air Conditioner | 15 years |
+| `11.ME.MAU` | Makeup Air Unit | 20 years |
+| `11.ME.FCU` | Fan Coil Unit | 20 years |
+| `11.ME.CU` | Condensing Unit | 15 years |
+| `11.ME.FE` | Exhaust Fan | 25 years |
+
+### Key patterns for Maximo queries
+
+| Question | Tool to use |
+|----------|------------|
+| "What are all the Maximo fields for this asset?" | `get_asset_detail` — returns decoded field names |
+| "Show me aging HVAC equipment" | `list_aging_assets` — filters by RemainLife threshold |
+| "What's decommissioned?" | `list_assets_by_status` with status "DECOMMISSIONED" |
+| "Show me all AHUs" | `list_assets_by_classification` with "11.ME.AHU" or "AHU" |
+| "What Maximo columns are available?" | `get_model_schema` with family_filter "z" |
+| "Get all assets with their Maximo data" | `list_tagged_assets_with_properties` |
+
+### Data coverage warning
+
+Not all tagged assets will have Maximo data populated. A facility may have 200 tagged assets but only 30 synced to Maximo. Assets without CMMS sync will have minimal `z:` properties (sometimes just a room code). There is no way to know upfront — query and check.
+
+---
+
+## 8. Data Freshness & Caveats
 
 - **Streams**: Real-time data. `get_stream_last_reading` for current state, `get_stream_data` for historical range.
 - **Elements/Assets**: Updated when BIM model is re-imported or properties are manually changed via Tandem UI or API mutations.

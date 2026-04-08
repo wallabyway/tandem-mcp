@@ -305,6 +305,58 @@ async def list_systems_serving_room(facility_id: str, room_name: str) -> list:
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# ASSET INTELLIGENCE TOOLS (composite — schema-aware)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@mcp.tool()
+async def get_model_schema(model_id: str, family_filter: str | None = None) -> Any:
+    """Get the column schema for a model — maps qualified columns (e.g. 'z:iAs') to human-readable names. Use family_filter='z' to get only DT/Maximo properties. This is essential for interpreting z: property values."""
+    client = _client()
+    if family_filter:
+        return await client._build_schema_map(model_id, family_filter)
+    return await client.get_model_schema(model_id)
+
+
+@mcp.tool()
+async def list_tagged_assets_with_properties(
+    facility_id: str,
+    model_id: str | None = None,
+    include_empty: bool = False,
+) -> list:
+    """List all tagged assets with their DT/Maximo properties decoded to human-readable names. Set include_empty=true to include assets without DT properties. This is the go-to tool for asset inventory with lifecycle data."""
+    return await _client().get_tagged_assets_with_properties(facility_id, model_id, include_empty)
+
+
+@mcp.tool()
+async def list_assets_by_status(facility_id: str, status: str) -> list:
+    """Filter tagged assets by Maximo status. Examples: 'OPERATING', 'DECOMMISSIONED', 'NOT READY'. Searches case-insensitively across any status-like property field."""
+    return await _client().get_assets_by_status(facility_id, status)
+
+
+@mcp.tool()
+async def list_aging_assets(
+    facility_id: str,
+    max_remain_life: float | None = None,
+    include_decommissioned: bool = True,
+) -> list:
+    """Find assets nearing end of life. Filters by RemainLife <= max_remain_life (years). Returns results sorted by remaining life ascending. If max_remain_life is omitted, returns all assets with lifecycle data. The #1 capital planning query."""
+    return await _client().get_aging_assets(facility_id, max_remain_life, include_decommissioned)
+
+
+@mcp.tool()
+async def list_assets_by_classification(facility_id: str, classification: str) -> list:
+    """Filter tagged assets by classification code or name. Examples: '11.ME.AHU' for Air Handling Units, '11.ME.CRU' for CRACs, 'AHU' for partial match. Includes DT/Maximo properties in results."""
+    return await _client().get_assets_by_classification(facility_id, classification)
+
+
+@mcp.tool()
+async def get_asset_detail(facility_id: str, element_key: str, model_id: str | None = None) -> dict:
+    """Get full details for a single asset with ALL properties decoded — standard, DT/Maximo, source/Revit — with human-readable field names. Also resolves level and room names. This is the best tool for drilling into a specific asset."""
+    return await _client().get_asset_detail(facility_id, element_key, model_id)
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # WRITE TOOLS
 # ═══════════════════════════════════════════════════════════════════════
 
