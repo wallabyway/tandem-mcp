@@ -3,8 +3,6 @@ const facilitySelect = document.getElementById("facility-select");
 const viewerContainer = document.getElementById("viewer-container");
 const loadingOverlay = document.getElementById("loading-overlay");
 const statusEl = document.getElementById("status");
-const isolateBtn = document.getElementById("isolate-btn");
-const resetBtn = document.getElementById("reset-btn");
 
 let viewer = null;
 let dtApp = null;
@@ -193,7 +191,6 @@ async function loadFacility(facility) {
     await dtApp.displayFacility(facility, false, viewer);
     window._currentFacility = facility;
 
-    enableSearch();
     setStatus(getFacilityName(facility));
     console.log("Facility loaded:", getFacilityName(facility));
   } catch (err) {
@@ -284,13 +281,8 @@ function resetView() {
   setStatus("View reset");
 }
 
-function enableSearch() {
-  isolateBtn.disabled = false;
-  resetBtn.disabled = false;
-}
-
-isolateBtn.addEventListener("click", doIsolateAndFit);
-resetBtn.addEventListener("click", resetView);
+window.doIsolateAndFit = doIsolateAndFit;
+window.resetView = resetView;
 
 window.addEventListener("unhandledrejection", (e) => {
   e.preventDefault();
