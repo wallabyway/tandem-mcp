@@ -21,9 +21,11 @@ from .constants import (
     ELEMENT_FLAGS_SYSTEM,
     ELEMENT_FLAGS_TICKET,
     MUTATE_ACTIONS_INSERT,
+    QC_CLASSIFICATION,
     QC_ELEMENT_FLAGS,
     QC_IS_ASSET,
     QC_KEY,
+    QC_LEVEL,
     QC_NAME,
     QC_ONAME,
     QC_OSYSTEM_CLASS,
@@ -242,7 +244,6 @@ class TandemClient:
             if level_key is None:
                 continue
             rooms = await self.get_rooms(model_id)
-            from .constants import QC_LEVEL
             for rm in rooms:
                 if rm.get(QC_LEVEL) == level_key:
                     results.append({"key": rm.get(QC_KEY), "name": rm.get(QC_ONAME) or rm.get(QC_NAME), "model_id": model_id})
@@ -255,7 +256,6 @@ class TandemClient:
             level_key = await self._find_level_key(model_id, level_name)
             if level_key is None:
                 continue
-            from .constants import QC_LEVEL
             assets = await self.get_tagged_assets(model_id)
             for a in assets:
                 if a.get(QC_LEVEL) == level_key:
@@ -337,7 +337,6 @@ class TandemClient:
                 name = (e.get(QC_ONAME) or e.get(QC_NAME, "")).lower()
                 if needle not in name:
                     continue
-                from .constants import QC_LEVEL
                 level_key = e.get(QC_LEVEL)
                 level_name = level_map.get(level_key, "") if level_key else ""
                 room_names = []
@@ -486,9 +485,8 @@ class TandemClient:
         """Build a mapping from qualified column (e.g. 'z:iAs') to attribute metadata."""
         schema = await self.get_model_schema(model_id)
         result: dict[str, dict] = {}
-        if not isinstance(schema, list):
-            return result
-        for attr in schema:
+        attrs = schema if isinstance(schema, list) else schema.get("attributes", []) if isinstance(schema, dict) else []
+        for attr in attrs:
             if not isinstance(attr, dict):
                 continue
             fam = attr.get("fam", "")
@@ -621,7 +619,6 @@ class TandemClient:
         schema_map = await self._build_schema_map(mid)
         dt_props = self._decode_element_props(elem, schema_map)
 
-        from .constants import QC_LEVEL, QC_CLASSIFICATION
         level_key = elem.get(QC_LEVEL)
         level_name = ""
         if level_key:
