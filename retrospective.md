@@ -1,5 +1,79 @@
 # Tandem MCP — LLM Agent Retrospective
 
+---
+
+## Session 2: QA Validation & KB Optimization for External Agents
+
+> **Date:** 2026-04-13
+> **Session Goal:** Run full QA test suite, then iteratively improve the knowledge base to reduce tool call waste when external LLM agents (Codex) use the MCP server.
+
+### QA Test Results (18 prompts, TBIT facility)
+
+All 18 QA prompts executed successfully. Key findings:
+
+| Category | Pass | Notes |
+|----------|------|-------|
+| Discovery & Navigation (Q1.x) | 2/2 | `list_groups` → `list_group_facilities` chain works cleanly |
+| Spatial — Levels & Rooms (Q2.x) | 4/4 | 314 levels, 1263 rooms. Level naming uses "LEVEL 02" not "Level 2" — agents must adapt search terms |
+| Systems — MEP (Q3.x) | 2/2 | 8 systems total, 6 HVAC. System-to-element linkage is sparse (0 elements in Supply Air, Return Air) |
+| Spatial System Analysis (Q4.x) | 2/2 | Tools work but return 0 results due to missing element-room assignments in data |
+| IoT Streams (Q5.1) | 1/1 | 2 streams exist ("Test", "Heat Map") |
+| Maximo Schema (Q6.2) | 1/1 | 77 column mappings returned |
+| Asset Intelligence (Q7.x) | 3/3 | 317 tagged assets, 61 with <5yr remaining life |
+| Tickets (Q8.1) | 1/1 | 11 open tickets |
+| Edge Cases (Q10.2) | 1/1 | Empty result for nonexistent system — correct |
+
+**Data gaps identified:** System-element linkage not populated (Q3.4, Q4.1, Q4.3). Element-to-room assignments sparse. No "Domestic Hot Water" system exists (only "Cold Water").
+
+### Codex Agent Testing — Iterative KB Improvement
+
+Tested Codex (external LLM agent) against the query "Give me full details on asset TERTBTAHU005" across 3 iterations:
+
+#### Problem: TERTBTAHU005 is a Maximo `SystemNum`, not a Tandem element key or BIM name
+
+| Iteration | Tool calls | Key change | What improved |
+|-----------|-----------|------------|---------------|
+| v1 (no kb changes) | 13+ | Baseline | `find_element_location` × 10 facilities — all failed because it searches BIM names, not Maximo IDs |
+| v2 (kb as tool + MUST language) | 12 | Converted `tandem://kb` resource to `get_knowledge_base` tool; added "IMPORTANT: call FIRST" | Codex read the kb, followed Maximo resolution path — no `find_element_location` dead ends |
+| v3 (cost tip + no exact clues) | 5 | Added `list_group_facilities` cost tip; removed exact TERTBTAHU005 from examples | Used `list_group_facilities` (1 call vs 9 `get_facility` calls); still solved it from naming pattern alone |
+
+#### Additional tests:
+
+| Query | Calls | Optimal | Notes |
+|-------|-------|---------|-------|
+| "Which floors does the Return Air system reach?" | 5 | 4-5 | Correct tool selection, correct empty result |
+| "Show me all TBIT equipment past its design life" | 2 | 2 | Used `list_aging_assets(max_remain_life=0)` then broadened — efficient |
+| "Find the oldest AHU" (cold, no facility hint) | 11 | 5+N | Searched 7 Maximo-template facilities; only TBIT had data. Unavoidable fan-out for open-ended queries |
+| "Find the oldest AHU" (with "assume TBIT") | 5 | 5 | Perfect — scoped query eliminates fan-out |
+
+### KB Changes Made
+
+1. **Fixed Maximo field examples** — `AssetId` was incorrectly shown as "TERTBTAHU005" (actually numeric 3067); `SystemNum` was shown as "HVAC" (actually "TERTBTEXF012"); `SiteId` corrected from "TERTBT" to "LAX"
+2. **Added "Resolving Maximo identifiers" section** — 4-step resolution path: identify facility from prefix → `list_tagged_assets_with_properties` → find element key → `get_asset_detail`. Explicit warning that `find_element_location` searches BIM names only.
+3. **Added LAWA naming conventions** — Decodes the `TERTBT` prefix format (TER+TBT+equipment type+instance) with facility prefix lookup table
+4. **Added `list_group_facilities` cost tip** — "Do NOT call `get_facility` on each facility individually — that costs N calls instead of 1"
+5. **Added facility scope narrowing tip** — Check `template` field; skip facilities with `template: null` for lifecycle queries
+6. **Converted kb from MCP resource to tool** — Resources are passive and some agents (Codex) can't see them. As a tool with "IMPORTANT: Call this tool FIRST" in the description, agents actually read it.
+
+### Key Lessons
+
+**1. MCP resources are invisible to some agents.** The kb was originally a `@mcp.resource("tandem://kb")`. Codex never fetched it. Converting to `@mcp.tool()` with directive language in the description fixed this immediately. Not all MCP clients implement the resources protocol.
+
+**2. Polite instructions get ignored; directive language works.** "Before using these tools, read the kb.md..." → skipped. "IMPORTANT: You MUST call get_knowledge_base BEFORE any other tool. Skipping it will cause you to misroute lookups." → followed consistently.
+
+**3. Teach strategy, not data.** Hardcoding facility URNs or exact asset IDs makes the kb brittle and locks agents onto specific test cases. Teaching the naming convention pattern (TER+TBT = TBIT) and the resolution strategy (`list_tagged_assets_with_properties` → search by `SystemNum`) is robust to any LAWA asset identifier.
+
+**4. Cost tips in decision trees change behavior.** Adding "Do NOT call `get_facility` on each facility individually" directly next to the `list_group_facilities` recommendation caused Codex to switch from 9 individual calls to 1 bulk call in the very next test.
+
+**5. Open-ended queries have an irreducible cost.** When the user asks "find the oldest AHU" without naming a facility, the agent must check all plausible facilities. The template-based narrowing tip cut 10 facility searches to 7, but the remaining fan-out is correct behavior — it would catch data in any facility.
+
+**6. Tool descriptions are the highest-leverage prompt surface.** Agents scan tool descriptions before deciding which tool to call. The kb teaches strategy, but the tool description is the first thing an agent reads for each decision point.
+
+---
+---
+
+## Session 1: Initial TBIT Exploration
+
 > **Date:** 2026-04-07
 > **Session Goal:** Explore TBIT (LAX) facility assets via the Tandem MCP, identify aging HVAC equipment using Maximo lifecycle data.
 

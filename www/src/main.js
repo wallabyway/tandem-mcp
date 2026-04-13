@@ -310,4 +310,46 @@ async function init() {
   }
 }
 
+// --- TauriTerm postMessage listener ---
+window.addEventListener("message", (event) => {
+  if (event.data?.type !== "tauriterm") return;
+  const { action, dbIds, modelIndex } = event.data;
+
+  if (!viewer) {
+    console.warn("TauriTerm command received but viewer not ready:", action);
+    return;
+  }
+
+  const allModels = viewer.getVisibleModels();
+  const model = modelIndex != null ? allModels[modelIndex] : allModels[0];
+
+  switch (action) {
+    case "isolate":
+      if (model && dbIds) viewer.isolate(dbIds, model);
+      break;
+    case "fitToView":
+      if (model && dbIds) viewer.fitToView(dbIds, model, false);
+      break;
+    case "select":
+      if (model && dbIds) viewer.select(dbIds, model);
+      break;
+    case "showAll":
+      viewer.showAll();
+      viewer.fitToView(undefined, undefined, false);
+      break;
+    case "isolateAndFit":
+      doIsolateAndFit();
+      break;
+    case "panel":
+      // Toggle sidebar panels via Alpine
+      const shell = document.querySelector("[x-data='appShell()']");
+      if (shell && shell.__x) {
+        shell.__x.$data.toggle(event.data.panel);
+      }
+      break;
+    default:
+      console.warn("Unknown TauriTerm action:", action);
+  }
+});
+
 init();

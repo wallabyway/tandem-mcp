@@ -253,8 +253,9 @@ G  BUILDING SITEWORK
 When the LLM receives a natural-language question about a facility, use this decision tree:
 
 ### Step 1: What are they asking about?
-- **A specific asset with full details** → `get_asset_detail` (returns decoded Maximo fields, location, everything)
-- **A specific element by name** → `find_element_location` or search via `list_elements`
+- **A specific asset by Maximo identifier** (e.g., "TERTBTEXF012") → see "Resolving Maximo identifiers" in Section 7. Do NOT use `find_element_location` — it only searches BIM element names, not Maximo property values.
+- **A specific asset with full details** → `get_asset_detail` (requires Tandem element key, not a Maximo ID)
+- **A specific element by BIM name** → `find_element_location` (searches the element `name` field, e.g., "AIRHANDLER", "Pump P-101")
 - **Asset lifecycle / aging / replacement** → `list_aging_assets` (filters by RemainLife)
 - **Assets by status (operating, decommissioned)** → `list_assets_by_status`
 - **Assets by equipment type** → `list_assets_by_classification` (e.g., "AHU", "11.ME.CRU")
@@ -271,6 +272,8 @@ When the LLM receives a natural-language question about a facility, use this dec
 ### Step 2: Do you have the facility URN?
 - If no → `list_groups` → `list_group_facilities` → pick the facility
 - If yes → proceed to the relevant query
+- **Cost tip**: `list_group_facilities` returns all facility metadata (building names, model lists, addresses, templates) in a single call. Do NOT call `get_facility` on each facility individually to find the right one — that costs N calls instead of 1.
+- **Narrowing scope**: When a query spans all facilities (e.g., "find the oldest AHU"), don't blindly search every facility. Check the `template` field in `list_group_facilities` results first — only facilities with a Maximo-type template (e.g., `"name": "Maximo Solution"`) will have lifecycle data like YRBuilt, RemainLife, and DesignLife. Skip facilities with `template: null` for asset/lifecycle queries.
 
 ### Step 3: Do you need model IDs?
 - Most element queries require a **model ID**, not a facility ID
@@ -311,17 +314,20 @@ Properties in the `z:` family have short encoded IDs like `z:iAs`, `z:gQs`, `z:j
 | RemainLife | Remaining useful life (years) | Double | 8.47 |
 | DesignLife | Expected total lifespan (years) | Double | 20 |
 | YRBuilt | Year installed | String | "2013" |
-| HealthScore | Condition score | Double | 1656 |
+| HealthScore | Condition score | Double | 90 |
 | StatusDescription | Operating status | String | "OPERATING" |
 | Description | Equipment description | String | "Air Handling Unit" |
-| PluscmodelNum | Manufacturer model number | String | "EPQN-270" |
-| AssetId | Maximo asset tag | String | "TERTBTAHU005" |
+| PluscmodelNum | Manufacturer model number | String | "YC-99X128X460" |
+| AssetId | Numeric Maximo asset ID | Integer | 3067 |
+| SystemNum | Maximo system identifier (site+type+number) | String | "TERTBTEXF012" |
 | SerialNum | Serial number | String | "THXM377610" |
 | OrgId | Organization | String | "LAWA" |
-| SiteId | Site code | String | "TERTBT" |
+| SiteId | Site code | String | "LAX" |
+| SaddressCode | Site/location prefix code | String | "TERTBT" |
 | Priority | Work priority | Integer | 4 |
-| FailureCode | Uniformat failure class | String | "D3052" |
-| SystemNum | System identifier | String | "HVAC" |
+| FailureCode | Failure classification code | String | "HVAC" |
+| ClassstructureId | Maximo classification structure ID | String | "1295" |
+| TemplateId | Maximo PM template | String | "D3052" |
 
 ### Maximo classification hierarchy (Mechanical Equipment)
 
@@ -350,6 +356,41 @@ Facilities with Maximo integration use classification codes like these for HVAC:
 ### Data coverage warning
 
 Not all tagged assets will have Maximo data populated. A facility may have 200 tagged assets but only 30 synced to Maximo. Assets without CMMS sync will have minimal `z:` properties (sometimes just a room code). There is no way to know upfront — query and check.
+
+### Resolving Maximo identifiers to Tandem element keys
+
+Users often refer to assets by their Maximo `SystemNum` (e.g., "TERTBTEXF012") rather than the internal Tandem element key. **`get_asset_detail` requires a Tandem element key** (base64-encoded), NOT a Maximo identifier. **`find_element_location` searches BIM element names** (e.g., "AIRHANDLER"), NOT Maximo property values — it will not find a Maximo SystemNum.
+
+Resolution path:
+1. Identify the target facility from the identifier's prefix (see naming conventions below)
+2. Call `list_tagged_assets_with_properties` on that facility
+3. Search the results for the identifier in the `SystemNum`, `AssetNum`, or `NewAssetNum` properties
+4. Use the matching element's `key` field to call `get_asset_detail`
+
+### LAWA asset naming conventions
+
+LAWA (Los Angeles World Airports) uses a structured `SystemNum` format:
+
+```
+TERTBTEXF012
+├── TER  = Terminal
+├── TBT  = Tom Bradley Terminal (TBIT)
+├── EXF  = Equipment type (Exhaust Fan)
+└── 012  = Instance number
+```
+
+Common site prefixes and their facilities:
+
+| Prefix | Facility |
+|--------|----------|
+| TERTBT | Tom Bradley International Terminal (TBIT) |
+| TERT02 | Terminal 2 |
+| TERT03 | Terminal 3 |
+| TERT04 | Terminal 4 |
+| TERT06 | Terminal 6 |
+| TERT07 | Terminal 7 |
+
+If a user provides an identifier starting with one of these prefixes, go directly to that facility — do not search all facilities.
 
 ---
 
