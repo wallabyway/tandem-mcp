@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tandem Viewer</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: { adsk: '#0696D7' }
+        }
+      }
+    };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <script src="https://static.tandem.autodesk.com/1.0.866/viewer3D.js"></script>
+  <link href="https://static.tandem.autodesk.com/1.0.866/style.min.css" rel="stylesheet" type="text/css" />
+
+  <style>
+    .adsk-viewing-viewer { background: #030712 !important; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { animation: spin 0.8s linear infinite; }
+    [x-cloak] { display: none !important; }
+  </style>
+  <script type="module" crossorigin src="/assets/index-DWc1JF4A.js"></script>
+</head>
+
+<body class="h-full bg-gray-950 text-gray-200 flex flex-col overflow-hidden"
+      x-data="appShell()" x-cloak>
+
+  <!-- ===== TOP NAVBAR ===== -->
+  <nav class="h-14 bg-gray-900 border-b border-gray-800 flex items-center px-4 gap-4 shrink-0 z-30">
+    <!-- Logo -->
+    <div class="flex items-center gap-2 shrink-0">
+      <svg class="w-6 h-6 text-adsk" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+      </svg>
+      <span class="text-sm font-semibold text-adsk tracking-wide">TANDEM</span>
+    </div>
+
+    <!-- Selects -->
+    <select id="account-select" disabled
+            class="bg-gray-800 border border-gray-700 rounded-md px-2.5 py-1.5 text-xs text-gray-300 min-w-[170px] focus:border-adsk focus:outline-none disabled:opacity-40">
+      <option value="">Loading...</option>
+    </select>
+    <select id="facility-select" disabled
+            class="bg-gray-800 border border-gray-700 rounded-md px-2.5 py-1.5 text-xs text-gray-300 min-w-[170px] focus:border-adsk focus:outline-none disabled:opacity-40">
+      <option value="">Select facility...</option>
+    </select>
+
+    <!-- Spacer -->
+    <div class="flex-1"></div>
+
+    <!-- Search -->
+    <div class="relative hidden sm:block">
+      <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>
+      </svg>
+      <input type="text" placeholder="Search..."
+             class="bg-gray-800 border border-gray-700 rounded-md pl-8 pr-3 py-1.5 text-xs text-gray-300 w-52 focus:border-adsk focus:outline-none placeholder-gray-500" />
+    </div>
+
+    <!-- Status -->
+    <span id="status" class="text-[11px] text-gray-500 whitespace-nowrap max-w-[200px] truncate">Initializing...</span>
+
+    <!-- User avatar -->
+    <div class="w-8 h-8 rounded-full bg-adsk/20 text-adsk flex items-center justify-center text-xs font-bold shrink-0 cursor-pointer hover:bg-adsk/30 transition">
+      MB
+    </div>
+  </nav>
+
+  <!-- ===== MAIN BODY ===== -->
+  <div class="flex flex-1 min-h-0">
+
+    <!-- ===== ICON SIDEBAR ===== -->
+    <div class="w-14 bg-gray-900 border-r border-gray-800 flex flex-col items-center py-3 gap-1 shrink-0 z-20">
+
+      <!-- Tickets -->
+      <button @click="toggle('tickets')" :class="activePanel === 'tickets' ? 'bg-gray-800 text-adsk' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'"
+              class="w-10 h-10 rounded-lg flex items-center justify-center transition" title="Tickets">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15a2.25 2.25 0 0 1 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z"/>
+        </svg>
+      </button>
+
+      <!-- Spatial Browser -->
+      <button @click="toggle('spatial')" :class="activePanel === 'spatial' ? 'bg-gray-800 text-adsk' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'"
+              class="w-10 h-10 rounded-lg flex items-center justify-center transition" title="Spaces">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21"/>
+        </svg>
+      </button>
+
+      <!-- Reports -->
+      <button @click="toggle('reports')" :class="activePanel === 'reports' ? 'bg-gray-800 text-adsk' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'"
+              class="w-10 h-10 rounded-lg flex items-center justify-center transition" title="Reports">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z"/>
+        </svg>
+      </button>
+
+      <!-- Chat -->
+      <button @click="toggle('chat')" :class="activePanel === 'chat' ? 'bg-gray-800 text-adsk' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'"
+              class="w-10 h-10 rounded-lg flex items-center justify-center transition" title="Chat">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 0 1 1.037-.443 48.282 48.282 0 0 0 5.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z"/>
+        </svg>
+      </button>
+
+      <!-- Divider -->
+      <div class="w-6 border-t border-gray-700 my-2"></div>
+
+      <!-- Isolate -->
+      <button @click="window.doIsolateAndFit && window.doIsolateAndFit()"
+              class="w-10 h-10 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-200 hover:bg-gray-800/50 transition" title="Isolate">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 3.75H6A2.25 2.25 0 0 0 3.75 6v1.5M16.5 3.75H18A2.25 2.25 0 0 1 20.25 6v1.5m0 9V18A2.25 2.25 0 0 1 18 20.25h-1.5m-9 0H6A2.25 2.25 0 0 1 3.75 18v-1.5M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
+        </svg>
+      </button>
+
+      <!-- Show All -->
+      <button @click="window.resetView && window.resetView()"
+              class="w-10 h-10 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-200 hover:bg-gray-800/50 transition" title="Show All">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- ===== SLIDE PANEL ===== -->
+    <div x-show="activePanel" x-transition:enter="transition-all duration-200 ease-out"
+         x-transition:enter-start="-translate-x-4 opacity-0" x-transition:enter-end="translate-x-0 opacity-100"
+         x-transition:leave="transition-all duration-150 ease-in"
+         x-transition:leave-start="translate-x-0 opacity-100" x-transition:leave-end="-translate-x-4 opacity-0"
+         class="w-80 bg-gray-900 border-r border-gray-800 flex flex-col min-h-0 shrink-0 z-10">
+
+      <!-- Tickets Panel -->
+      <template x-if="activePanel === 'tickets'">
+        <div class="flex flex-col h-full" x-data="ticketsPanel()">
+          <div class="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
+            <h2 class="text-sm font-semibold text-gray-200">Tickets</h2>
+            <span class="text-[10px] bg-adsk/20 text-adsk px-2 py-0.5 rounded-full" x-text="tickets.length + ' open'"></span>
+          </div>
+          <div class="flex-1 overflow-y-auto p-3 space-y-2">
+            <template x-for="t in tickets" :key="t.id">
+              <div class="bg-gray-800 rounded-lg p-3 hover:bg-gray-750 cursor-pointer transition border border-gray-700/50 hover:border-gray-600">
+                <div class="flex items-start justify-between gap-2">
+                  <span class="text-xs font-medium text-gray-200 leading-snug" x-text="t.title"></span>
+                  <span class="shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium"
+                        :class="t.priority === 'High' ? 'bg-red-500/20 text-red-400' : t.priority === 'Medium' ? 'bg-amber-500/20 text-amber-400' : 'bg-green-500/20 text-green-400'"
+                        x-text="t.priority"></span>
+                </div>
+                <div class="flex items-center gap-2 mt-1.5">
+                  <span class="text-[10px] text-gray-500" x-text="t.location"></span>
+                  <span class="text-gray-700">|</span>
+                  <span class="text-[10px] text-gray-500" x-text="t.date"></span>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </template>
+
+      <!-- Spatial Panel -->
+      <template x-if="activePanel === 'spatial'">
+        <div class="flex flex-col h-full" x-data="spatialPanel()">
+          <div class="px-4 py-3 border-b border-gray-800">
+            <h2 class="text-sm font-semibold text-gray-200">Spaces</h2>
+          </div>
+          <div class="flex-1 overflow-y-auto p-2">
+            <template x-for="level in levels" :key="level.name">
+              <div class="mb-0.5">
+                <button @click="level.open = !level.open"
+                        class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs hover:bg-gray-800 transition group">
+                  <svg class="w-3.5 h-3.5 text-gray-500 transition-transform duration-150 shrink-0"
+                       :class="level.open && 'rotate-90'" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/>
+                  </svg>
+                  <svg class="w-4 h-4 text-gray-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6.429 9.75 2.25 12l4.179 2.25m0-4.5 5.571 3 5.571-3m-11.142 0L2.25 7.5 12 2.25l9.75 5.25-4.179 2.25m0 0L12 12.75 6.429 9.75m11.142 0 4.179 2.25L12 17.25 2.25 12l4.179-2.25m11.142 0 4.179 2.25L12 21.75l-9.75-5.25 4.179-2.25"/>
+                  </svg>
+                  <span class="text-gray-300 font-medium" x-text="level.name"></span>
+                  <span class="ml-auto text-[10px] text-gray-600" x-text="level.rooms.length + ' rooms'"></span>
+                </button>
+                <div x-show="level.open" x-transition.duration.150ms class="ml-5 border-l border-gray-800">
+                  <template x-for="room in level.rooms" :key="room">
+                    <button class="w-full flex items-center gap-2 px-3 py-1 text-xs text-gray-400 hover:text-gray-200 hover:bg-gray-800/50 rounded-md transition">
+                      <svg class="w-3.5 h-3.5 text-gray-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6Z"/>
+                      </svg>
+                      <span x-text="room"></span>
+                    </button>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </template>
+
+      <!-- Reports Panel -->
+      <template x-if="activePanel === 'reports'">
+        <div class="flex flex-col h-full" x-data="reportsPanel()">
+          <div class="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
+            <h2 class="text-sm font-semibold text-gray-200">Reports</h2>
+            <span class="text-[10px] bg-adsk/20 text-adsk px-2 py-0.5 rounded-full" x-text="reports.length + ' available'"></span>
+          </div>
+          <div class="flex-1 overflow-y-auto p-3 space-y-2">
+            <template x-for="r in reports" :key="r.id">
+              <button @click="openReport(r)"
+                      class="w-full bg-gray-800 rounded-lg p-3 hover:bg-gray-750 cursor-pointer transition border border-gray-700/50 hover:border-adsk/40 text-left group">
+                <div class="flex items-start gap-3">
+                  <div class="w-8 h-8 rounded-md bg-gray-700/50 flex items-center justify-center shrink-0 group-hover:bg-adsk/20 transition">
+                    <template x-if="r.icon === 'bolt'">
+                      <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z"/></svg>
+                    </template>
+                    <template x-if="r.icon === 'wrench'">
+                      <svg class="w-4 h-4 text-sky-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M11.42 15.17 17.25 21A2.652 2.652 0 0 0 21 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 1 1-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 0 0 4.486-6.336l-3.276 3.277a3.004 3.004 0 0 1-2.25-2.25l3.276-3.276a4.5 4.5 0 0 0-6.336 4.486c.049.58.025 1.193-.14 1.743"/></svg>
+                    </template>
+                    <template x-if="r.icon === 'shield'">
+                      <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z"/></svg>
+                    </template>
+                    <template x-if="r.icon === 'users'">
+                      <svg class="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z"/></svg>
+                    </template>
+                  </div>
+                  <div class="min-w-0">
+                    <span class="text-xs font-medium text-gray-200 leading-snug block" x-text="r.title"></span>
+                    <div class="flex items-center gap-2 mt-1">
+                      <span class="text-[10px] px-1.5 py-0.5 rounded bg-gray-700/60 text-gray-400" x-text="r.category"></span>
+                      <span class="text-[10px] text-gray-500" x-text="r.date"></span>
+                    </div>
+                  </div>
+                </div>
+              </button>
+            </template>
+          </div>
+        </div>
+      </template>
+
+      <!-- Chat Panel -->
+      <template x-if="activePanel === 'chat'">
+        <div class="flex flex-col h-full" x-data="chatPanel()">
+          <div class="px-4 py-3 border-b border-gray-800">
+            <h2 class="text-sm font-semibold text-gray-200">Assistant</h2>
+          </div>
+          <div class="flex-1 overflow-y-auto p-3 space-y-3" x-ref="chatScroll"
+               x-effect="$nextTick(() => $refs.chatScroll.scrollTop = $refs.chatScroll.scrollHeight)">
+            <template x-for="m in messages" :key="m.id">
+              <div :class="m.from === 'user' ? 'ml-8' : 'mr-8'">
+                <div :class="m.from === 'user' ? 'bg-adsk/20 text-gray-100' : 'bg-gray-800 text-gray-300'"
+                     class="rounded-lg px-3 py-2 text-xs leading-relaxed">
+                  <span x-text="m.text"></span>
+                </div>
+              </div>
+            </template>
+          </div>
+          <div class="p-3 border-t border-gray-800">
+            <div class="flex gap-2">
+              <input x-model="draft" @keydown.enter="send()"
+                     placeholder="Ask about equipment, spaces..."
+                     class="flex-1 bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-xs text-gray-300 placeholder-gray-500 focus:border-adsk focus:outline-none" />
+              <button @click="send()"
+                      class="px-3 py-2 bg-adsk hover:bg-adsk/80 rounded-md transition">
+                <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- ===== VIEWER ===== -->
+    <div id="viewer-container" x-show="!activeReport" class="flex-1 relative min-w-0">
+      <div id="loading-overlay" class="absolute inset-0 flex flex-col items-center justify-center bg-gray-950 z-50 gap-3">
+        <div class="w-10 h-10 border-3 border-gray-800 border-t-adsk rounded-full spinner"></div>
+        <span class="text-xs text-gray-500">Connecting to Autodesk Tandem...</span>
+      </div>
+    </div>
+
+    <!-- ===== REPORT VIEWER ===== -->
+    <template x-if="activeReport">
+      <div class="flex-1 min-w-0 flex flex-col bg-gray-950">
+        <!-- Report toolbar -->
+        <div class="h-10 bg-gray-900 border-b border-gray-800 flex items-center px-4 gap-3 shrink-0">
+          <button @click="closeReport()" class="text-gray-400 hover:text-gray-200 transition flex items-center gap-1.5 text-xs">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/>
+            </svg>
+            Back to Viewer
+          </button>
+          <div class="w-px h-5 bg-gray-700"></div>
+          <span class="text-xs text-gray-300 font-medium" x-text="activeReport.title"></span>
+          <div class="flex-1"></div>
+          <span class="text-[10px] text-gray-500" x-text="activeReport.date"></span>
+          <button class="text-gray-400 hover:text-gray-200 transition" title="Print">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 0 1 1.913-.247m0 0a48.159 48.159 0 0 1 10.5 0m-10.5 0V5.625a1.125 1.125 0 0 1 .906-1.103 48.3 48.3 0 0 1 10.188 0 1.125 1.125 0 0 1 .906 1.103V8.034"/>
+            </svg>
+          </button>
+        </div>
+        <!-- Report document -->
+        <div class="flex-1 overflow-y-auto flex justify-center p-6">
+          <div class="w-full max-w-3xl bg-white rounded-lg shadow-2xl shadow-black/40 text-gray-900">
+            <!-- Report header -->
+            <div class="bg-gradient-to-r from-gray-800 to-gray-700 rounded-t-lg px-8 py-6">
+              <div class="flex items-center gap-3 mb-3">
+                <div class="w-8 h-8 rounded bg-adsk flex items-center justify-center">
+                  <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                </div>
+                <span class="text-xs text-gray-400 font-medium tracking-wider uppercase">Autodesk Tandem</span>
+              </div>
+              <h1 class="text-xl font-bold text-white" x-text="activeReport.title"></h1>
+              <div class="flex gap-4 mt-2">
+                <span class="text-xs text-gray-400" x-text="'Category: ' + activeReport.category"></span>
+                <span class="text-xs text-gray-400" x-text="'Generated: ' + activeReport.date"></span>
+              </div>
+            </div>
+            <!-- Report sections -->
+            <div class="px-8 py-6 space-y-6">
+              <template x-for="(section, idx) in activeReport.sections" :key="idx">
+                <div>
+                  <h2 class="text-sm font-bold text-gray-800 border-b border-gray-200 pb-1.5 mb-3" x-text="section.heading"></h2>
+                  <template x-if="section.body">
+                    <p class="text-xs text-gray-600 leading-relaxed whitespace-pre-line" x-text="section.body"></p>
+                  </template>
+                  <template x-if="section.table">
+                    <div class="overflow-x-auto">
+                      <table class="w-full text-xs border-collapse">
+                        <thead>
+                          <tr>
+                            <template x-for="h in section.table.headers" :key="h">
+                              <th class="text-left py-2 px-3 bg-gray-100 font-semibold text-gray-700 border-b border-gray-200" x-text="h"></th>
+                            </template>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <template x-for="(row, ri) in section.table.rows" :key="ri">
+                            <tr class="border-b border-gray-100 hover:bg-gray-50">
+                              <template x-for="(cell, ci) in row" :key="ci">
+                                <td class="py-2 px-3 text-gray-600" x-text="cell"></td>
+                              </template>
+                            </tr>
+                          </template>
+                        </tbody>
+                      </table>
+                    </div>
+                  </template>
+                </div>
+              </template>
+            </div>
+            <!-- Report footer -->
+            <div class="px-8 py-4 border-t border-gray-200 flex items-center justify-between">
+              <span class="text-[10px] text-gray-400">Confidential — Autodesk Tandem Digital Twin Platform</span>
+              <span class="text-[10px] text-gray-400">Page 1 of 1</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+
+</body>
+</html>
